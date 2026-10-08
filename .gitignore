@@ -1,0 +1,9 @@
+# Data
+data/trip.csv
+data/vehicle.csv
+data/stop.csv
+data/line.csv
+data/line_stop.csv
+
+#Env
+.env
