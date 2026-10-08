@@ -28,7 +28,9 @@ END;
 GO
 
 -- Create the 'TclDataWarehouse' database
-CREATE DATABASE TclDataWarehouse;
+-- UTF-8 collation: VARCHAR columns store the UTF-8 source files as-is (accents, ’, £). On Linux, BULK INSERT
+-- cannot convert code pages (only CODEPAGE = 'RAW' is allowed), so the raw UTF-8 bytes must land in UTF-8 columns.
+CREATE DATABASE TclDataWarehouse COLLATE Latin1_General_100_CI_AS_SC_UTF8;
 GO
 
 USE TclDataWarehouse;
