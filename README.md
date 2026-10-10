@@ -4,17 +4,34 @@
 
 # TCL Data Warehouse and Analytics Project
 
-A data warehouse built on Lyon's public transport network (TCL) with SQL Server: stops, lines, vehicles and more than
-12 million stop events over one month, turned into insights on punctuality, service reliability and ridership.
-Designed as a portfolio project.
+A data warehouse built on Lyon's public transport network (TCL) with SQL Server: stops, lines, vehicles and every stop
+of every run, extracted from two source systems and turned into insights on punctuality, service reliability and
+ridership. Designed as a portfolio project.
 
 ## Data Architecture
 
 The warehouse follows the **Medallion Architecture**, with one schema per layer in the `TclDataWarehouse` database:
 
-1. **Bronze**: raw data loaded as-is from the CSV files with `BULK INSERT`.
-2. **Silver**: cleansed, standardized and normalized data, with data quality issues resolved.
-3. **Gold**: business-ready data modeled into a **star schema** for reporting and analytics.
+![High Level Architecture](docs/data_architecture.jpeg)
+
+1. **Bronze**: raw data loaded as-is from the CSV files with `BULK INSERT` (`bronze.load_bronze`).
+2. **Silver**: cleansed, standardized and normalized data, with data quality issues resolved and the keys of the two
+   source systems made joinable (`silver.load_silver`).
+3. **Gold**: business-ready views modeled into a **fact constellation**: two fact tables sharing the same dimensions,
+   for reporting and analytics.
+
+### Data Flow
+
+Each source file goes through bronze and silver before feeding the gold views:
+
+![Data Flow](docs/data_flow.jpeg)
+
+### Data Model
+
+`fact_trips` links to the four dimensions; `fact_line_stops` shares `dim_lines` and `dim_stops` with it. Every view
+and column is described in the [data catalog](docs/data_catalog.md).
+
+![Gold layer data model](docs/data_model.webp)
 
 ## Project Overview
 
@@ -25,18 +42,19 @@ The warehouse follows the **Medallion Architecture**, with one schema per layer 
 
 ## Dataset
 
-Five CSV files describe the TCL network from **2026-09-06 to 2026-10-05**:
+Six CSV files from two source systems, each with its own conventions:
 
-| File | One row = | Rows |
-|---|---|---:|
-| `stop.csv` | one platform (boarding point) | 9,788 |
-| `line.csv` | one line in one direction | 1,586 |
-| `line_stop.csv` | one stop of a line, with its position | 21,629 |
-| `vehicle.csv` | one vehicle | 2,038 |
-| `trip.csv` | one run stopping at one stop on one day | 12,138,673 |
+| System | File | One row = |
+|---|---|---|
+| Network reference (`data/source_network/`) | `stop.csv` | one stop record (a platform) |
+| | `line.csv` | one version of a line in one direction |
+| | `line_stop.csv` | one stop of a line in one direction, with its position |
+| Operations & fleet (`data/source_ops/`) | `mode_category.csv` | one combination of transport mode and line category |
+| | `vehicle.csv` | one version of a vehicle record |
+| | `trip.csv` | one run stopping at one stop on one service day |
 
 Columns, statuses and relations are described in [data/README.md](data/README.md).
-The CSV files are not versioned: place them in `data/` before loading.
+The CSV files are not versioned: place them in `data/source_network/` and `data/source_ops/` before loading.
 
 ## Getting Started
 
@@ -47,12 +65,25 @@ The CSV files are not versioned: place them in `data/` before loading.
    docker compose up -d
    docker compose ps
    ```
-3. Create the database and its schemas (this drops `TclDataWarehouse` if it exists):
+3. Connect to `localhost,1433` with the login `sa` and the password from `.env` (trust the server certificate),
+   for example from VS Code with the SQL Server (mssql) extension.
+4. Run the scripts in this order:
+
+   | Step | Run | Does |
+   |---|---|---|
+   | 1 | `scripts/init_database.sql` | creates the database and the `bronze`, `silver` and `gold` schemas (drops `TclDataWarehouse` if it exists) |
+   | 2 | `scripts/bronze/ddl_bronze.sql`, `scripts/bronze/proc_load_bronze.sql` | creates the bronze tables and their load procedure |
+   | 3 | `EXEC bronze.load_bronze;` | loads the CSV files |
+   | 4 | `scripts/silver/ddl_silver.sql`, `scripts/silver/proc_load_silver.sql` | creates the silver tables and their cleaning procedure |
+   | 5 | `EXEC silver.load_silver;` | cleans bronze into silver |
+   | 6 | `scripts/gold/ddl_gold.sql` | creates the gold views |
+   | 7 | `tests/quality_checks_silver.sql`, `tests/quality_checks_gold.sql` | quality checks: each one says what result to expect |
+
+   Without VS Code, a script can be run inside the container:
    ```bash
-   docker compose cp scripts/init_database.sql sqlserver:/tmp/init_database.sql
-   docker compose exec sqlserver sh -c '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -b -i /tmp/init_database.sql'
+   docker compose cp scripts/init_database.sql sqlserver:/tmp/script.sql
+   docker compose exec sqlserver sh -c '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -b -i /tmp/script.sql'
    ```
-4. Connect to `localhost,1433` with the login `sa` and the password from `.env` (trust the server certificate).
 
 ## Project Requirements
 
@@ -60,10 +91,11 @@ The CSV files are not versioned: place them in `data/` before loading.
 
 Build a SQL Server data warehouse that consolidates the TCL network's data for analytical reporting.
 
-- **Data Sources**: the five CSV files above.
+- **Data Sources**: the six CSV files of the two source systems.
 - **Data Quality**: cleanse and resolve data quality issues before analysis.
-- **Integration**: combine all files into a single star schema designed for analytical queries.
-- **Scope**: one month of service; historization of the reference data is not required.
+- **Integration**: combine both systems into a single data model designed for analytical queries.
+- **Scope**: one month of service; historization of the reference data is not required (gold keeps the current
+  version of lines and vehicles).
 - **Documentation**: document the data model for business and analytics teams.
 
 ### Analytics & Reporting
@@ -71,7 +103,7 @@ Build a SQL Server data warehouse that consolidates the TCL network's data for a
 Develop SQL-based analytics on:
 
 - **Punctuality**: actual vs planned times by line, mode, stop and time of day.
-- **Service Reliability**: cancelled runs and skipped stops, and their reasons.
+- **Service Reliability**: cancelled runs and skipped stops by line, mode and day.
 - **Ridership**: boardings and alightings by line, stop and hour.
 - **Fleet Usage**: vehicle use and load compared with capacity.
 
@@ -79,12 +111,24 @@ Develop SQL-based analytics on:
 
 ```
 tcl-data-warehouse/
-├── data/                   # Source CSV files (not versioned) and their documentation
-├── docs/                   # Project documentation and diagrams
+├── data/                       # Source CSV files (not versioned) and their documentation
+│   ├── source_network/         # Network reference system: stop, line, line_stop
+│   ├── source_ops/             # Operations & fleet system: mode_category, vehicle, trip
+│   └── README.md
+├── docs/
+│   ├── data_architecture.jpeg  # High-level architecture
+│   ├── data_catalog.md         # Gold layer: views, columns and their meaning
+│   ├── data_flow.jpeg          # Data lineage: sources -> bronze -> silver -> gold
+│   ├── data_model.webp         # Gold layer data model
+│   └── tcl.png
 ├── scripts/
-│   └── init_database.sql   # Creates the database and the bronze, silver and gold schemas
-├── docker-compose.yml      # SQL Server 2022 container
-├── env.example             # Template for the local .env file
+│   ├── init_database.sql       # Creates the database (UTF-8) and the bronze, silver and gold schemas
+│   ├── bronze/                 # Bronze tables and their load procedure
+│   ├── silver/                 # Silver tables and their cleaning procedure
+│   └── gold/                   # Gold views (fact constellation)
+├── tests/                      # Quality checks of the silver and gold layers
+├── docker-compose.yml          # SQL Server 2022 container
+├── env.example                 # Template for the local .env file
 └── README.md
 ```
 
