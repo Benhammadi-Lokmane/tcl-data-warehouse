@@ -1,209 +1,163 @@
 /*
 ===============================================================================
-DDL Script: Create Gold Views
+DDL Script: Create Gold Tables
 ===============================================================================
 Script Purpose:
-    This script creates views for the Gold layer in the data warehouse.
-    The Gold layer represents the final dimension and fact tables: a fact
-    constellation where two facts share the same (conformed) dimensions.
+    This script creates the tables of the Gold layer, dropping existing tables
+    (or the views of an earlier version) if they already exist.
+	  Run this script to re-define the DDL structure of 'gold' Tables
 
+    The Gold layer is a fact constellation: two facts share the same (conformed)
+    dimensions.
         fact_trips      -> dim_dates, dim_lines, dim_stops, dim_vehicles
         fact_line_stops -> dim_lines, dim_stops
 
-    Each view performs transformations and combines data from the Silver layer
-    to produce a clean, enriched, and business-ready dataset.
+    Indexes:
+    - Dimensions: clustered primary key on the surrogate key, unique index on the
+      business key (used to look up keys when the facts are loaded).
+    - fact_trips: clustered columnstore index, compressed by column, for fast
+      aggregations over millions of rows (delays, counts by line, day, hour...).
+    - fact_line_stops: small table, clustered primary key on its grain.
+    No foreign key constraints: they would forbid TRUNCATE during each load.
+    Relationships are verified by tests/quality_checks_gold.sql.
 
-    Surrogate keys are ROW_NUMBER() over a unique order, so a dimension gives
-    the same keys every time it is queried (the facts and the checks join on them).
-    Key 0 is the 'n/a' member: a fact row whose stop or vehicle is unknown points to it.
-
-Usage:
-    - These views can be queried directly for analytics and reporting.
+    Tables are filled by the procedure gold.load_gold (scripts/gold/proc_load_gold.sql).
 ===============================================================================
 */
 USE TclDataWarehouse;
 GO
 
+-- Creating a filtered index (gold.dim_stops) requires QUOTED_IDENTIFIER ON; sqlcmd uses OFF by default
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
 -- =============================================================================
 -- Create Dimension: gold.dim_dates
 -- =============================================================================
-IF OBJECT_ID('gold.dim_dates', 'V') IS NOT NULL
-    DROP VIEW gold.dim_dates;
+IF OBJECT_ID('gold.dim_dates', 'U') IS NOT NULL
+    DROP TABLE gold.dim_dates;
 GO
 
-CREATE VIEW gold.dim_dates AS
-WITH bounds AS (
-    -- Whole calendar years covering the service days loaded in silver
-    SELECT
-        DATEFROMPARTS(YEAR(MIN(trp_dt)), 1, 1)   AS first_day,
-        DATEFROMPARTS(YEAR(MAX(trp_dt)), 12, 31) AS last_day
-    FROM silver.ops_trips
-), calendar AS (
-    SELECT
-        DATEADD(day, s.value, b.first_day) AS full_date
-    FROM bounds b
-    CROSS APPLY GENERATE_SERIES(0, DATEDIFF(day, b.first_day, b.last_day)) AS s
-)
-SELECT
-    CAST(CONVERT(CHAR(8), full_date, 112) AS INT)  AS date_key,      -- yyyymmdd, e.g. 20260908
-    full_date,
-    DAY(full_date)                                 AS day,
-    -- Monday = 1 ... Sunday = 7, whatever the session's language or DATEFIRST (1900-01-01 was a Monday)
-    CHOOSE(DATEDIFF(day, '19000101', full_date) % 7 + 1,
-           'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') AS day_name,
-    DATEDIFF(day, '19000101', full_date) % 7 + 1   AS day_of_week,
-    CASE
-        WHEN DATEDIFF(day, '19000101', full_date) % 7 + 1 IN (6, 7) THEN 'true'
-        ELSE 'false'
-    END                                            AS is_weekend,
-    DATEPART(iso_week, full_date)                  AS week_of_year,
-    MONTH(full_date)                               AS month,
-    CHOOSE(MONTH(full_date),
-           'January', 'February', 'March', 'April', 'May', 'June',
-           'July', 'August', 'September', 'October', 'November', 'December') AS month_name,
-    DATEPART(quarter, full_date)                   AS quarter,
-    YEAR(full_date)                                AS year
-FROM calendar;
+CREATE TABLE gold.dim_dates (
+    date_key        INT          NOT NULL,   -- yyyymmdd, e.g. 20260908
+    full_date       DATE         NOT NULL,
+    day             INT          NOT NULL,
+    day_name        VARCHAR(9)   NOT NULL,
+    day_of_week     INT          NOT NULL,   -- 1 = Monday ... 7 = Sunday
+    is_weekend      VARCHAR(5)   NOT NULL,
+    week_of_year    INT          NOT NULL,
+    month           INT          NOT NULL,
+    month_name      VARCHAR(9)   NOT NULL,
+    quarter         INT          NOT NULL,
+    year            INT          NOT NULL,
+    CONSTRAINT pk_dim_dates PRIMARY KEY CLUSTERED (date_key)
+);
+CREATE UNIQUE NONCLUSTERED INDEX ux_dim_dates_full_date ON gold.dim_dates (full_date);
 GO
 
 -- =============================================================================
 -- Create Dimension: gold.dim_lines
 -- =============================================================================
-IF OBJECT_ID('gold.dim_lines', 'V') IS NOT NULL
-    DROP VIEW gold.dim_lines;
+IF OBJECT_ID('gold.dim_lines', 'U') IS NOT NULL
+    DROP TABLE gold.dim_lines;
 GO
 
-CREATE VIEW gold.dim_lines AS
-SELECT
-    ROW_NUMBER() OVER (ORDER BY ln.ln_code, ln.ln_dir) AS line_key,  -- Surrogate key
-    ln.ln_code                    AS line_code,
-    ln.ln_dir                     AS direction,
-    ln.ln_name                    AS line_name,
-    ln.ln_color                   AS color,
-    COALESCE(mc.mode, 'n/a')      AS mode,
-    COALESCE(mc.category, 'n/a')  AS category,
-    ln.ln_start_dt                AS start_date                       -- start of the current version
-FROM silver.network_lines ln
-LEFT JOIN silver.ops_mode_category mc
-    ON ln.ln_mode_cat_id = mc.id
-WHERE ln.ln_end_dt IS NULL; -- Current version only: no history in gold
+CREATE TABLE gold.dim_lines (
+    line_key        INT           NOT NULL,
+    line_code       VARCHAR(50)   NOT NULL,
+    direction       VARCHAR(50)   NOT NULL,
+    line_name       VARCHAR(100)  NULL,
+    color           VARCHAR(50)   NULL,
+    mode            VARCHAR(50)   NOT NULL,
+    category        VARCHAR(50)   NOT NULL,
+    start_date      DATE          NULL,
+    CONSTRAINT pk_dim_lines PRIMARY KEY CLUSTERED (line_key)
+);
+CREATE UNIQUE NONCLUSTERED INDEX ux_dim_lines_code_direction ON gold.dim_lines (line_code, direction);
 GO
 
 -- =============================================================================
 -- Create Dimension: gold.dim_stops
 -- =============================================================================
-IF OBJECT_ID('gold.dim_stops', 'V') IS NOT NULL
-    DROP VIEW gold.dim_stops;
+IF OBJECT_ID('gold.dim_stops', 'U') IS NOT NULL
+    DROP TABLE gold.dim_stops;
 GO
 
-CREATE VIEW gold.dim_stops AS
-SELECT
-    0      AS stop_key,                 -- 'n/a' member: trips whose stop was not recorded
-    NULL   AS stop_id,
-    'n/a'  AS stop_name,
-    'n/a'  AS address,
-    'n/a'  AS city,
-    'n/a'  AS fare_zone,
-    'n/a'  AS wheelchair_accessible,
-    NULL   AS latitude,
-    NULL   AS longitude
-UNION ALL
-SELECT
-    ROW_NUMBER() OVER (ORDER BY stp_id) AS stop_key,  -- Surrogate key
-    stp_id,
-    stp_name,
-    stp_address,
-    stp_city,
-    stp_zone,
-    stp_pmr,
-    stp_lat,
-    stp_lon
-FROM silver.network_stops;
+CREATE TABLE gold.dim_stops (
+    stop_key              INT            NOT NULL,   -- 0 = 'n/a' member
+    stop_id               INT            NULL,       -- NULL only for the 'n/a' member
+    stop_name             VARCHAR(100)   NULL,
+    address               VARCHAR(100)   NULL,
+    city                  VARCHAR(50)    NULL,
+    fare_zone             VARCHAR(50)    NULL,
+    wheelchair_accessible VARCHAR(50)    NULL,
+    latitude              DECIMAL(9,6)   NULL,
+    longitude             DECIMAL(9,6)   NULL,
+    CONSTRAINT pk_dim_stops PRIMARY KEY CLUSTERED (stop_key)
+);
+CREATE UNIQUE NONCLUSTERED INDEX ux_dim_stops_stop_id ON gold.dim_stops (stop_id) WHERE stop_id IS NOT NULL;
 GO
 
 -- =============================================================================
 -- Create Dimension: gold.dim_vehicles
 -- =============================================================================
-IF OBJECT_ID('gold.dim_vehicles', 'V') IS NOT NULL
-    DROP VIEW gold.dim_vehicles;
+IF OBJECT_ID('gold.dim_vehicles', 'U') IS NOT NULL
+    DROP TABLE gold.dim_vehicles;
 GO
 
-CREATE VIEW gold.dim_vehicles AS
-SELECT
-    0      AS vehicle_key,              -- 'n/a' member: no vehicle (cancelled run) or vehicle missing from the fleet
-    'n/a'  AS vehicle_id,
-    'n/a'  AS vehicle_type,
-    NULL   AS capacity,
-    'n/a'  AS depot,
-    NULL   AS in_service_date
-UNION ALL
-SELECT
-    ROW_NUMBER() OVER (ORDER BY LEN(veh_id), veh_id) AS vehicle_key,  -- Surrogate key (numbers in numeric order)
-    veh_id,
-    veh_type,
-    cap,
-    depot,
-    first_in_service                    -- first entry into service, over all versions of the vehicle
-FROM (
-    SELECT
-        *,
-        MIN(in_service) OVER (PARTITION BY veh_id) AS first_in_service
-    FROM silver.ops_vehicles
-) v
-WHERE out_service IS NULL; -- Current version only: no history in gold
+CREATE TABLE gold.dim_vehicles (
+    vehicle_key     INT           NOT NULL,   -- 0 = 'n/a' member
+    vehicle_id      VARCHAR(50)   NOT NULL,
+    vehicle_type    VARCHAR(50)   NOT NULL,
+    capacity        INT           NULL,
+    depot           VARCHAR(50)   NULL,
+    in_service_date DATE          NULL,
+    CONSTRAINT pk_dim_vehicles PRIMARY KEY CLUSTERED (vehicle_key)
+);
+CREATE UNIQUE NONCLUSTERED INDEX ux_dim_vehicles_vehicle_id ON gold.dim_vehicles (vehicle_id);
 GO
 
 -- =============================================================================
 -- Create Fact Table: gold.fact_trips
 -- =============================================================================
-IF OBJECT_ID('gold.fact_trips', 'V') IS NOT NULL
-    DROP VIEW gold.fact_trips;
+IF OBJECT_ID('gold.fact_trips', 'U') IS NOT NULL
+    DROP TABLE gold.fact_trips;
 GO
 
-CREATE VIEW gold.fact_trips AS
-SELECT
-    t.trp_run                                     AS run_id,
-    t.trp_pos                                     AS stop_position,
-    CAST(CONVERT(CHAR(8), t.trp_dt, 112) AS INT)  AS date_key,          -- service day (a run after midnight belongs to the day before)
-    ln.line_key                                   AS line_key,
-    COALESCE(st.stop_key, 0)                      AS stop_key,
-    COALESCE(ve.vehicle_key, 0)                   AS vehicle_key,
-    t.trp_status                                  AS status,
-    t.trp_plan_arr                                AS planned_arrival,
-    t.trp_plan_dep                                AS planned_departure,
-    t.trp_arr                                     AS actual_arrival,
-    t.trp_dep                                     AS actual_departure,
-    DATEPART(hour, t.trp_plan_arr)                AS planned_hour,      -- clock hour 0-23, for peak / off-peak analysis
-    t.trp_delay_s                                 AS delay_s,
-    t.trp_dwell_s                                 AS dwell_s,
-    t.trp_board                                   AS boardings,
-    t.trp_alight                                  AS alightings
-FROM silver.ops_trips t
-LEFT JOIN gold.dim_lines ln
-    ON t.trp_line_code = ln.line_code
-   AND t.trp_dir = ln.direction
-LEFT JOIN gold.dim_stops st
-    ON t.trp_stop = st.stop_id
-LEFT JOIN gold.dim_vehicles ve
-    ON t.trp_veh = ve.vehicle_id;
+CREATE TABLE gold.fact_trips (
+    run_id            VARCHAR(100)  NOT NULL,
+    stop_position     INT           NOT NULL,
+    date_key          INT           NULL,
+    line_key          INT           NULL,
+    stop_key          INT           NOT NULL,
+    vehicle_key       INT           NOT NULL,
+    status            VARCHAR(50)   NOT NULL,
+    planned_arrival   DATETIME2(0)  NULL,
+    planned_departure DATETIME2(0)  NULL,
+    actual_arrival    DATETIME2(0)  NULL,
+    actual_departure  DATETIME2(0)  NULL,
+    planned_hour      INT           NULL,
+    delay_s           INT           NULL,
+    dwell_s           INT           NULL,
+    boardings         INT           NULL,
+    alightings        INT           NULL
+);
+-- Columnstore: each column stored and compressed separately, so aggregations read only the columns they use
+CREATE CLUSTERED COLUMNSTORE INDEX cci_fact_trips ON gold.fact_trips;
 GO
 
 -- =============================================================================
 -- Create Fact Table: gold.fact_line_stops (route structure: no measures, no dates)
 -- =============================================================================
-IF OBJECT_ID('gold.fact_line_stops', 'V') IS NOT NULL
-    DROP VIEW gold.fact_line_stops;
+IF OBJECT_ID('gold.fact_line_stops', 'U') IS NOT NULL
+    DROP TABLE gold.fact_line_stops;
 GO
 
-CREATE VIEW gold.fact_line_stops AS
-SELECT
-    ln.line_key               AS line_key,
-    COALESCE(st.stop_key, 0)  AS stop_key,
-    ls.ls_pos                 AS stop_position
-FROM silver.network_line_stop ls
-LEFT JOIN gold.dim_lines ln
-    ON ls.ls_line = ln.line_code
-   AND ls.ls_dir = ln.direction
-LEFT JOIN gold.dim_stops st
-    ON ls.ls_stop = st.stop_id;
+CREATE TABLE gold.fact_line_stops (
+    line_key        INT   NOT NULL,
+    stop_key        INT   NOT NULL,
+    stop_position   INT   NOT NULL,
+    CONSTRAINT pk_fact_line_stops PRIMARY KEY CLUSTERED (line_key, stop_position)
+);
 GO

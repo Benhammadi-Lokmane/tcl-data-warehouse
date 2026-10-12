@@ -4,19 +4,62 @@ Quality Checks
 ===============================================================================
 Script Purpose:
     This script performs quality checks to validate the integrity, consistency,
-    and accuracy of the Gold Layer. These checks ensure:
+    and accuracy of the Gold Layer tables. These checks ensure:
     - Uniqueness of surrogate keys and business keys in dimension tables.
-    - Referential integrity between fact and dimension tables.
-    - Completeness of the facts compared with the Silver layer.
+    - Referential integrity between fact and dimension tables (no foreign key
+      constraints in gold: they would forbid TRUNCATE during each load).
+    - Completeness of every gold table compared with the Silver layer (tables are
+      only as fresh as their last load).
     - Validation of relationships in the data model for analytical purposes.
+    - Health of the columnstore index of the fact table.
 
 Usage Notes:
-    - Run these checks after creating the Gold views (scripts/gold/ddl_gold.sql).
+    - Run these checks after loading the Gold Layer (EXEC gold.load_gold).
     - Investigate and resolve any discrepancies found during the checks.
 ===============================================================================
 */
 USE TclDataWarehouse;
 GO
+
+-- ====================================================================
+-- Checking Completeness of the Gold Tables against Silver
+-- ====================================================================
+-- Rows expected in each table from the silver tables it is loaded from
+-- (current versions only for lines and vehicles, + 1 for the 'n/a' member)
+-- Expectation: No results
+SELECT
+    gold_table,
+    gold_rows,
+    expected_rows
+FROM (
+    SELECT 'dim_lines' AS gold_table,
+           (SELECT COUNT(*) FROM gold.dim_lines) AS gold_rows,
+           (SELECT COUNT(*) FROM silver.network_lines WHERE ln_end_dt IS NULL) AS expected_rows
+    UNION ALL
+    SELECT 'dim_stops',
+           (SELECT COUNT(*) FROM gold.dim_stops),
+           (SELECT COUNT(*) FROM silver.network_stops) + 1
+    UNION ALL
+    SELECT 'dim_vehicles',
+           (SELECT COUNT(*) FROM gold.dim_vehicles),
+           (SELECT COUNT(*) FROM silver.ops_vehicles WHERE out_service IS NULL) + 1
+    UNION ALL
+    SELECT 'fact_trips',
+           (SELECT COUNT(*) FROM gold.fact_trips),
+           (SELECT COUNT(*) FROM silver.ops_trips)
+    UNION ALL
+    SELECT 'fact_line_stops',
+           (SELECT COUNT(*) FROM gold.fact_line_stops),
+           (SELECT COUNT(*) FROM silver.network_line_stop)
+) t
+WHERE gold_rows <> expected_rows;
+
+-- Check that the Calendar Covers Every Service Day of Silver
+-- Expectation: No results
+SELECT DISTINCT
+    t.trp_dt
+FROM silver.ops_trips t
+WHERE NOT EXISTS (SELECT 1 FROM gold.dim_dates d WHERE d.full_date = t.trp_dt);
 
 -- ====================================================================
 -- Checking 'gold.dim_dates'
@@ -212,6 +255,19 @@ WHERE (status <> 'OPERATED' AND (delay_s IS NOT NULL OR dwell_s IS NOT NULL OR b
    OR boardings < 0
    OR alightings < 0
    OR planned_hour NOT BETWEEN 0 AND 23;
+
+-- Columnstore Health of the Fact Table
+-- Expectation: review (most rows in COMPRESSED row groups; a few OPEN / CLOSED groups in the delta store are
+-- normal after a load and are compressed by ALTER INDEX cci_fact_trips ON gold.fact_trips REORGANIZE)
+SELECT
+    state_desc,
+    COUNT(*)                         AS row_groups,
+    SUM(total_rows)                  AS rows_in_groups,
+    SUM(deleted_rows)                AS deleted_rows,
+    SUM(size_in_bytes) / 1024 / 1024 AS size_mb
+FROM sys.dm_db_column_store_row_group_physical_stats
+WHERE object_id = OBJECT_ID('gold.fact_trips')
+GROUP BY state_desc;
 
 -- ====================================================================
 -- Checking 'gold.fact_line_stops'
