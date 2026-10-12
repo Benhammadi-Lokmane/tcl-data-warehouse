@@ -223,3 +223,71 @@ Hours 00 and 01 are in the table below.
 - **Passengers follow the same curve:** 7.8 boardings per counted passage at 08:00 and 7.3 at 17:00, against fewer
   than 1 at night. So delays and cancellations are highest exactly when the most passengers are on board. Weekday vs
   weekend cannot be compared with a single Tuesday.
+
+## 8. Cumulative analysis
+
+Source: `analytics/advanced/08_cumulative_analysis.sql`
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#2a78d6, #eb6834"
+---
+xychart-beta
+    title "Share of the day reached (%) by service hour"
+    x-axis "Service hour" ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24"]
+    y-axis "Running share of the day (%)" 0 --> 100
+    bar [0.6, 0.7, 0.7, 0.7, 0.9, 2.9, 7.6, 15.6, 23.1, 29.3, 34.5, 39.6, 44.8, 50.1, 55.2, 60.7, 67.6, 75.8, 83.4, 89.5, 93.8, 96.5, 98.3, 99.7, 100.0]
+    line [0.1, 0.1, 0.1, 0.1, 0.1, 0.9, 3.8, 14.4, 26.3, 32.4, 36.2, 40.1, 44.8, 49.4, 53.8, 58.9, 67.2, 79.3, 89.7, 95.4, 97.8, 99.0, 99.6, 100.0, 100.0]
+```
+
+**Blue bars:** running share of the day's planned passages (service). **Orange line:** running share of the day's
+counted boardings (demand, equipped vehicles). When the line is above the bars, demand is running ahead of service.
+
+<details>
+<summary>Data by service hour</summary>
+
+| Service hour | Running passages | Passages (%) | Running boardings | Boardings (%) | Average delay (s) | 3-hour moving average, simple (s) | 3-hour moving average, weighted (s) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 00 | 3,005 | 0.6 | 417 | 0.1 | 71.7 | 71.7 | 71.7 |
+| 01 | 3,460 | 0.7 | 436 | 0.1 | 59.4 | 65.6 | 70.1 |
+| 02 | 3,460 | 0.7 | 436 | 0.1 | – | 65.6 | 70.1 |
+| 03 | 3,460 | 0.7 | 436 | 0.1 | – | 59.4 | 59.4 |
+| 04 | 4,306 | 0.9 | 659 | 0.1 | 54.1 | 54.1 | 54.1 |
+| 05 | 13,659 | 2.9 | 5,116 | 0.9 | 78.2 | 66.2 | 76.2 |
+| 06 | 36,021 | 7.6 | 22,181 | 3.8 | 98.6 | 77.0 | 91.6 |
+| 07 | 73,848 | 15.6 | 83,596 | 14.4 | 150.8 | 109.2 | 124.1 |
+| 08 | 109,206 | 23.1 | 152,216 | 26.3 | 207.4 | 152.3 | 159.5 |
+| 09 | 138,500 | 29.3 | 187,385 | 32.4 | 197.3 | 185.2 | 183.6 |
+| 10 | 162,943 | 34.5 | 209,849 | 36.2 | 141.8 | 182.2 | 186.0 |
+| 11 | 186,898 | 39.6 | 232,038 | 40.1 | 121.0 | 153.4 | 156.2 |
+| 12 | 211,624 | 44.8 | 259,407 | 44.8 | 124.3 | 129.0 | 129.1 |
+| 13 | 236,261 | 50.1 | 286,095 | 49.4 | 130.8 | 125.3 | 125.4 |
+| 14 | 260,599 | 55.2 | 311,226 | 53.8 | 128.2 | 127.8 | 127.8 |
+| 15 | 286,435 | 60.7 | 340,759 | 58.9 | 125.8 | 128.3 | 128.2 |
+| 16 | 319,126 | 67.6 | 389,017 | 67.2 | 148.9 | 134.3 | 135.6 |
+| 17 | 357,549 | 75.8 | 459,113 | 79.3 | 189.0 | 154.5 | 158.6 |
+| 18 | 393,776 | 83.4 | 518,987 | 89.7 | 227.5 | 188.5 | 189.7 |
+| 19 | 422,397 | 89.5 | 552,510 | 95.4 | 169.3 | 195.3 | 197.0 |
+| 20 | 442,761 | 93.8 | 566,243 | 97.8 | 107.3 | 168.0 | 179.1 |
+| 21 | 455,285 | 96.5 | 572,906 | 99.0 | 93.8 | 123.5 | 133.4 |
+| 22 | 463,940 | 98.3 | 576,645 | 99.6 | 72.0 | 91.0 | 95.9 |
+| 23 | 470,728 | 99.7 | 578,779 | 100.0 | 54.8 | 73.6 | 77.5 |
+| 24 | 471,946 | 100.0 | 578,899 | 100.0 | 58.0 | 61.6 | 64.0 |
+
+</details>
+
+- **Demand is more concentrated in the peaks than the service is:**
+  - **Halfway points:** half of the planned passages are done by the end of the 13:00 hour; half of the counted
+    boardings come during the 14:00 hour.
+  - **During the peaks, passengers run ahead of service:** by the end of 09:00, the day has made 29 % of its passages
+    but carried 32 % of its boardings; by the end of 18:00, 83 % against 90 %.
+  - **Caveat:** passenger counts are simulated and cover equipped vehicles only.
+- **The weighted moving average is the right one:** it is calculated from the sums over the 3-hour window. Averaging
+  the hourly averages gives a quiet hour as much weight as a peak hour. At 07:00, the simple average gives 109.2 s
+  against 124.1 s weighted, because the simple one counts 05:00 (9,231 passages) as much as 07:00 (36,995).
+- **Smoothing delays the peak:** the weighted 3-hour average peaks at 19:00 (197.0 s for 17:00–19:59), one hour after
+  the raw peak at 18:00 (227.5 s). A trailing window flattens a peak and moves it later. The hour axis is complete
+  (hours 2 and 3 filled with no service), otherwise the window at 04:00 would include the night hours 0 and 1.
