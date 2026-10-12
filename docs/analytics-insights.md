@@ -63,3 +63,19 @@ Source: `analytics/eda/02_dimensions_exploration.sql`
 - **Statuses are counted in stop rows, not runs:** 464,281 operated, 4,373 cancelled and 3,292 skipped. So 1.6 % of
   planned stops were not served. Cancelled runs are counted in Task 4. The fleet has 2,036 vehicles (87 % buses) in
   15 depots.
+
+## 3. Date range exploration
+
+Source: `analytics/eda/03_date_range_exploration.sql`
+
+- **A service day is longer than a calendar day:** the service day of Tuesday 2026-09-08 runs from 00:00 until 00:41
+  the next day. Its last 1,218 passages (114 runs) are therefore dated 2026-09-09. Group by service day (`date_key`),
+  never by the calendar date of `planned_arrival`. For hours, use a service hour from 0 to 24: `planned_hour` puts
+  both midnights in hour 0.
+- **There is a night pause and two peaks:**
+  - no service between 01:42 and 04:12;
+  - the busiest hours are 7–8 am (37,827 passages) and 5–6 pm (38,423);
+  - the last actual arrival comes 129 s after the last planned one.
+- **Fleet and line versions:** vehicles are 0 to 48 years old (9.0 on average, 6 with an unknown date; simulated).
+  46 School lines got a new version on 2026-09-01, the start of the school year. Gold keeps only current versions, so
+  there is no earlier version to compare them with.
