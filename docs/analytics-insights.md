@@ -123,3 +123,22 @@ Source: `analytics/eda/05_magnitude_analysis.sql`
   - the stadium event shuttles;
   - replacement buses;
   - 9 school lines.
+
+## 6. Ranking analysis
+
+Source: `analytics/eda/06_ranking_analysis.sql`
+
+- **The 10 most late lines are all buses:** among Regular lines with at least 20 runs (163 lines), they range from 80
+  (55.1 % late) to C22EX (45.8 %). Within each mode, the most late are T2 (23.5 %) for trams and C14 (38.7 %) for
+  trolleybuses. Only a ranking within a mode compares like with like.
+- **Ties and small lines change the answer:**
+  - **Ties:** 7 lines are tied at 0 % late (metro A–D, funicular F1–F2, river shuttle NAVI1). `TOP 5` drops two of
+    them at random, while `TOP 5 WITH TIES` or `RANK` keeps them all.
+  - **Exact values:** rank on the exact percentage. Lines 71 and C22 both show 21.8 % but are not tied.
+  - **Small lines:** without a minimum volume, the most cancelled lines are school lines at 50 % (1 cancellation out
+    of 2 runs). With at least 20 runs, line 80 leads (5 of 90). Line 130's 5 % rests on a single cancellation.
+- **Line 80 is both the most late and the most cancelled line.** Delays and cancellations are simulated, so this is a
+  pattern to check over a full month, not a conclusion.
+- **Busiest stations and cities:** a station is all the platforms with the same name.
+  - **Stations:** Gorge de Loup (16,262 counted boardings on 21 platforms), Saxe - Gambetta and Gare de Vaise.
+  - **Cities:** Villeurbanne, Lyon 3e and Lyon 9e get the most service.
