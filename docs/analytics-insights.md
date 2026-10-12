@@ -79,3 +79,24 @@ Source: `analytics/eda/03_date_range_exploration.sql`
 - **Fleet and line versions:** vehicles are 0 to 48 years old (9.0 on average, 6 with an unknown date; simulated).
   46 School lines got a new version on 2026-09-01, the start of the school year. Gold keeps only current versions, so
   there is no earlier version to compare them with.
+
+## 4. Measures exploration
+
+Source: `analytics/eda/04_measures_exploration.sql`
+
+- **Cancellations are rare, skipped stops less so:** 22,427 planned runs made 471,946 passages (about 21 per run).
+  - **Cancelled runs:** 184 (0.82 %). They were always cancelled in full, so 4,373 passages were lost.
+  - **Runs with a skipped stop:** 1,952 (8.7 %) skipped at least one stop.
+- **Delays have a long tail:** the average is 149.7 s, but the median is 74 s, the 95th percentile 586 s and the
+  maximum 3,921 s.
+  - **What to report:** a few very late passages pull the average up, so report the median (the typical passenger)
+    and the 95th percentile (the bad cases).
+  - **Punctuality:** 69.4 % on time, 29.5 % late, 1.1 % early.
+  - **The difficulty threshold:** the network as a whole is above the 20 % "line in difficulty" threshold. Before
+    Task 10 uses that threshold, check how many lines exceed it.
+- **Coverage and passengers:**
+  - **Coverage:** 774 of the 801 lines ran on this Tuesday (the other 27 are checked by category in Task 5), along
+    with 9,472 of 9,773 stops and 1,985 vehicles.
+  - **Passengers:** the 495 equipped vehicles counted 578,899 boardings and 578,843 alightings. The two almost balance,
+    which shows the counts are consistent. These totals cover about a quarter of the fleet, not the network's
+    ridership.
