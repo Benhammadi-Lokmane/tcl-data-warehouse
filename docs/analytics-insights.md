@@ -100,3 +100,26 @@ Source: `analytics/eda/04_measures_exploration.sql`
   - **Passengers:** the 495 equipped vehicles counted 578,899 boardings and 578,843 alightings. The two almost balance,
     which shows the counts are consistent. These totals cover about a quarter of the fleet, not the network's
     ridership.
+
+## 5. Magnitude analysis
+
+Source: `analytics/eda/05_magnitude_analysis.sql`
+
+- **Counting lines misleads:** School lines are 580 of the 774 lines that ran, but they make only 7 % of runs
+  (1,562) and 4 % of passages. Regular lines make 93 % of runs. Measure the size of a service in runs or passages,
+  not in lines. School runs are also cancelled a little more often (1.09 % vs 0.80 %).
+- **Punctuality depends on the mode:**
+  - **Median delay:** buses 97 s, trolleybuses 75 s, trams 55 s, metro 7 s.
+  - **Share of late passages:** the metro, funicular and river shuttle are never late; trams are 20.5 % late (just
+    over the "in difficulty" threshold) and buses 33.6 %.
+  - **Consequence:** a ranking that mixes modes only ranks the modes, so rank lines within a mode. Delays are
+    simulated.
+- **Service and passengers are concentrated in Zone 1:** 86 % of passages and 93 % of counted boardings. The busiest
+  cities are Lyon 3e, Lyon 9e and Villeurbanne. Compared per counted passage, a metro passage counts 28.5 boardings
+  and a bus passage 2.2. The funicular has no counters, so it is missing from every passenger measure.
+- **The 27 lines that did not run are plausible for a Tuesday:**
+  - night lines (PL1–PL4);
+  - the Grand Parc shuttles (N180–N184);
+  - the stadium event shuttles;
+  - replacement buses;
+  - 9 school lines.
