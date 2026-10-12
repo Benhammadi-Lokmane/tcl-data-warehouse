@@ -46,3 +46,20 @@ Source: `analytics/eda/01_database_exploration.sql`
 - No traffic alerts and no cancellation reason in the warehouse.
 - `date_key` and `line_key` are nullable by design. They have no NULLs today, but joins should be checked again after
   each load.
+
+## 2. Dimensions exploration
+
+Source: `analytics/eda/02_dimensions_exploration.sql`
+
+- **The network is mostly school buses:** of the 801 lines, 780 are bus lines and 589 (74 %) are School lines. Only
+  205 are Regular (185 bus, 8 tram, 5 trolleybus, 4 metro, 2 funicular, 1 river shuttle). Unless rankings and
+  averages by line are split by category, or limited to Regular lines, School services will dominate them. Each
+  ranking must also name its unit: a line (`line_code`) or a line-direction (`line_key`).
+- **City is unknown for 46 % of stops** (4,490 of 9,773), while every stop has a fare zone:
+  - a breakdown by city covers only about half of the network;
+  - fare zone is the complete geographic dimension.
+
+  Wheelchair access is unknown for 25 % of stops, so accessibility shares must show that bucket, not drop it.
+- **Statuses are counted in stop rows, not runs:** 464,281 operated, 4,373 cancelled and 3,292 skipped. So 1.6 % of
+  planned stops were not served. Cancelled runs are counted in Task 4. The fleet has 2,036 vehicles (87 % buses) in
+  15 depots.
