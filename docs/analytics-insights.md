@@ -20,6 +20,7 @@ Used the same way in every script:
 | Line in difficulty | More than 20 % of its passages late over the period. |
 | Cancellation rate | Cancelled runs / planned runs (runs, not stop rows). |
 | Passenger measures | Computed on vehicles with a passenger counter only, and labelled as such. |
+| Peak hours | 07:00–08:59 and 16:00–18:59 of the service day; every other hour is off-peak. |
 
 ---
 
@@ -142,3 +143,83 @@ Source: `analytics/eda/06_ranking_analysis.sql`
 - **Busiest stations and cities:** a station is all the platforms with the same name.
   - **Stations:** Gorge de Loup (16,262 counted boardings on 21 platforms), Saxe - Gambetta and Gare de Vaise.
   - **Cities:** Villeurbanne, Lyon 3e and Lyon 9e get the most service.
+
+## 7. Change-over-time analysis
+
+Source: `analytics/advanced/07_change_over_time_analysis.sql`
+
+With one service day, time is analysed by **service hour** (0 to 24, where 24 = after midnight), not by day or week.
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#2a78d6"
+---
+xychart-beta
+    title "Planned passages by service hour"
+    x-axis "Service hour" ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24"]
+    y-axis "Planned passages" 0 --> 40000
+    bar [3005, 455, 0, 0, 846, 9353, 22362, 37827, 35358, 29294, 24443, 23955, 24726, 24637, 24338, 25836, 32691, 38423, 36227, 28621, 20364, 12524, 8655, 6788, 1218]
+```
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#2a78d6"
+---
+xychart-beta
+    title "Late passages (%) by service hour, 04:00 to 24:00"
+    x-axis "Service hour" ["04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24"]
+    y-axis "Late passages (%)" 0 --> 50
+    line [9.6, 18.4, 21.8, 31.1, 37.4, 36.1, 27.8, 25.4, 26.3, 27.7, 28.7, 25.6, 30.0, 36.0, 40.1, 31.0, 23.1, 21.2, 15.7, 11.5, 11.9]
+```
+
+The second chart starts at 04:00 because there is no service between 01:42 and 04:12, and a line cannot show the gap.
+Hours 00 and 01 are in the table below.
+
+<details>
+<summary>Data by service hour</summary>
+
+| Service hour | Planned passages | Average delay (s) | Late (%) | Boardings per counted passage |
+|---|---:|---:|---:|---:|
+| 00 | 3,005 | 71.7 | 14.5 | 0.4 |
+| 01 | 455 | 59.4 | 10.1 | 0.2 |
+| 04 | 846 | 54.1 | 9.6 | 0.8 |
+| 05 | 9,353 | 78.2 | 18.4 | 1.7 |
+| 06 | 22,362 | 98.6 | 21.8 | 3.0 |
+| 07 | 37,827 | 150.8 | 31.1 | 6.6 |
+| 08 | 35,358 | 207.4 | 37.4 | 7.8 |
+| 09 | 29,294 | 197.3 | 36.1 | 4.8 |
+| 10 | 24,443 | 141.8 | 27.8 | 3.7 |
+| 11 | 23,955 | 121.0 | 25.4 | 3.7 |
+| 12 | 24,726 | 124.3 | 26.3 | 4.5 |
+| 13 | 24,637 | 130.8 | 27.7 | 4.4 |
+| 14 | 24,338 | 128.2 | 28.7 | 4.1 |
+| 15 | 25,836 | 125.8 | 25.6 | 4.5 |
+| 16 | 32,691 | 148.9 | 30.0 | 6.0 |
+| 17 | 38,423 | 189.0 | 36.0 | 7.3 |
+| 18 | 36,227 | 227.5 | 40.1 | 6.6 |
+| 19 | 28,621 | 169.3 | 31.0 | 4.7 |
+| 20 | 20,364 | 107.3 | 23.1 | 2.8 |
+| 21 | 12,524 | 93.8 | 21.2 | 2.2 |
+| 22 | 8,655 | 72.0 | 15.7 | 1.6 |
+| 23 | 6,788 | 54.8 | 11.5 | 1.3 |
+| 24 | 1,218 | 58.0 | 11.9 | 0.4 |
+
+</details>
+
+- **Delays follow the traffic peaks one hour later:**
+  - **Traffic:** passages peak at 07:00 (37,827) and 17:00 (38,423). The busiest 15 minutes start at 07:30.
+  - **Delays:** the late share peaks at 08:00 (37.4 %) and 18:00 (40.1 %). At 09:00 it is still 36.1 %, although
+    passages have fallen by 17 %.
+  - **Reading:** delays build up during a peak and take about an hour to clear. Delays are simulated.
+- **Peak hours are the weak point:** they carry 38 % of operated passages, but only 63–65 % of them are on time,
+  against 73 % off-peak. Runs starting at the peak are cancelled about twice as often: 1.19 % (morning) and 1.09 %
+  (evening), against 0.61 %.
+- **Passengers follow the same curve:** 7.8 boardings per counted passage at 08:00 and 7.3 at 17:00, against fewer
+  than 1 at night. So delays and cancellations are highest exactly when the most passengers are on board. Weekday vs
+  weekend cannot be compared with a single Tuesday.
