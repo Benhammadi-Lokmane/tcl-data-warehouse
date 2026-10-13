@@ -4,7 +4,8 @@ Create Database and Schemas (SQL Server)
 ===============================================================================
 Script Purpose:
     This script drops the 'TclDataWarehouse' database if it exists, recreates it,
-    and creates the three layer schemas: 'bronze', 'silver' and 'gold'.
+    and creates the three layer schemas: 'bronze', 'silver' and 'gold', plus the
+    'analytics' schema for the report views used by analysts.
 
 How to run (from the repo root, once the container is healthy):
     docker compose cp scripts/init_database.sql sqlserver:/tmp/init_database.sql
@@ -44,4 +45,7 @@ CREATE SCHEMA silver;
 GO
 
 CREATE SCHEMA gold;
+GO
+
+CREATE SCHEMA analytics;
 GO

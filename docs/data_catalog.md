@@ -1,4 +1,8 @@
-# Data Catalog for Gold Layer
+# Data Catalog
+
+This catalog describes the objects analysts can query:
+- **Gold layer** (sections 1–6): the tables of the data model.
+- **Analytics layer** (sections 7–9): the report views built on top of gold, the only objects most analysts need.
 
 ## Overview
 
@@ -176,3 +180,137 @@ Indexing strategy:
 | Index Name | Type | Columns | Purpose |
 |---|---|---|---|
 | pk_fact_line_stops | Clustered, primary key | line_key, stop_position | One row per line, direction and position; reads a line's stops in order. |
+
+---
+
+# Analytics Layer: Report Views
+
+## Overview
+
+The `analytics` schema holds **views** built on the gold tables, with the business definitions already applied. They
+are recalculated from gold on every query, so they are always as fresh as the last `EXEC gold.load_gold;`. The scripts
+that create them are in `analytics/reports/`.
+
+Business definitions used in every view:
+- **Delay** = actual arrival − planned arrival, in seconds, on operated passages only.
+- **On time** = delay between −60 s and +180 s · **late** = delay > 180 s · **early** = delay < −60 s.
+- **Cancelled run** = a run whose passages are all cancelled. Rates are counted in runs, not passages.
+- **Peak hours** = 07:00–08:59 and 16:00–18:59 of the service day; every other hour is off-peak.
+- **Passenger measures** (`*_equipped`, `counted_passages`) only cover vehicles with a passenger counter (about a
+  quarter of the fleet). NULL means nothing was counted, not zero passengers.
+- **Simulated data:** delays, cancellations, skipped stops, vehicles and passenger counts are simulated; lines,
+  stops and the planned timetable are real.
+
+Each view keeps the `n/a` member of its dimension (stop 0, vehicle 0), so its totals equal the fact table. To count
+only real stops or vehicles, filter it out with `stop_key <> 0` or `vehicle_key <> 0`.
+
+---
+
+## 7. analytics.report_lines
+
+- **Purpose:** One row per line (both directions together) with its volume, punctuality, peak penalty, passengers
+  and segment. All 801 lines appear; the lines that did not run have 0 runs and NULL measures.
+- **Source:** `analytics/reports/12_report_lines.sql`
+- **Columns:**
+
+| Column Name | Data Type | Description |
+|---|---|---|
+| line_code | VARCHAR(50) | Public code of the line (e.g., 'C5', 'T2'). |
+| line_name | VARCHAR(100) | Name of the line, made of its termini. |
+| mode | VARCHAR(50) | Transport mode (e.g., 'Bus', 'Tram', 'Metro'). |
+| category | VARCHAR(50) | Kind of service (e.g., 'Regular', 'School', 'Event'). |
+| directions | INT | Number of directions of the line in `dim_lines` (1 or 2). |
+| planned_runs | INT | Runs in the timetable over the period. |
+| operated_runs | INT | Runs with at least one operated passage. |
+| cancelled_runs | INT | Runs whose passages were all cancelled. |
+| cancellation_rate_pct | DECIMAL(5,2) | Cancelled runs / planned runs × 100. NULL when the line did not run. |
+| planned_passages | INT | Passages (a run at a stop) in the timetable. |
+| operated_passages | INT | Passages actually served. |
+| skipped_passages | INT | Passages of operated runs that did not serve the stop. |
+| avg_delay_s | DECIMAL(8,1) | Average delay of the operated passages, in seconds. |
+| median_delay_s | DECIMAL(8,1) | Median delay (the typical passage), in seconds. |
+| p95_delay_s | DECIMAL(8,1) | 95th percentile of the delay (the bad cases), in seconds. |
+| on_time_pct | DECIMAL(5,1) | Share of operated passages on time (−60 to +180 s). |
+| late_pct | DECIMAL(5,1) | Share of operated passages late (> 180 s). |
+| early_pct | DECIMAL(5,1) | Share of operated passages early (< −60 s). |
+| peak_late_pct | DECIMAL(5,1) | Late share during peak hours. |
+| off_peak_late_pct | DECIMAL(5,1) | Late share outside peak hours. |
+| peak_penalty_pts | DECIMAL(5,1) | `peak_late_pct` − `off_peak_late_pct`, in percentage points: how much worse the line gets at peak. |
+| counted_passages | INT | Operated passages where boardings were counted (equipped vehicles). |
+| boardings_equipped | INT | Passengers counted getting on (equipped vehicles only); NULL when nothing was counted. |
+| alightings_equipped | INT | Passengers counted getting off (equipped vehicles only); NULL when nothing was counted. |
+| boardings_per_counted_passage | DECIMAL(6,1) | Boardings / counted passages: demand that can be compared between lines. |
+| first_service_date | DATE | First service day with a passage of the line. |
+| last_service_date | DATE | Last service day with a passage of the line. |
+| service_days | INT | Number of service days with a passage of the line. |
+| is_rated | INT | 1 when the line is Regular with at least 20 operated runs (enough data to rate it), else 0. |
+| punctuality_segment | VARCHAR(13) | 'Good' (late ≤ 10 %), 'Watch' (≤ 20 %), 'In difficulty' (> 20 %), or 'Not rated'. |
+| is_in_difficulty | INT | 1 when the line is rated and more than 20 % of its passages are late. |
+| is_priority | INT | 1 when the line is in difficulty and has at least the median volume of the rated lines. |
+
+## 8. analytics.report_stops
+
+- **Purpose:** One row per stop (a platform) with its location, the lines serving it, its service, punctuality,
+  passengers, busiest hour and demand segment. All 9,774 rows of `dim_stops` appear (9,773 stops + the unknown stop).
+- **Source:** `analytics/reports/13_report_stops.sql`
+- **Columns:**
+
+| Column Name | Data Type | Description |
+|---|---|---|
+| stop_key | INT | Surrogate key of the stop in `dim_stops`; 0 = unknown stop. |
+| stop_id | INT | Identifier of the stop in the network's timetable; NULL for the unknown stop. |
+| stop_name | VARCHAR(100) | Name of the stop. Several platforms of a station share the same name. |
+| city | VARCHAR(50) | Commune of the stop; 'n/a' when not published (46 % of stops). |
+| fare_zone | VARCHAR(50) | Fare zone ('Zone 1' to 'Zone 5', 'Zone Externe'). |
+| wheelchair_accessible | VARCHAR(50) | 'true', 'false' or 'n/a' (unknown). |
+| latitude | DECIMAL(9,6) | Latitude, WGS 84. |
+| longitude | DECIMAL(9,6) | Longitude, WGS 84. |
+| lines_serving | INT | Lines planned to stop here (from the routes in `fact_line_stops`). |
+| modes_serving | VARCHAR(8000) | Modes of those lines, comma-separated (e.g., 'Bus, Metro'). |
+| planned_passages | INT | Passages in the timetable at this stop. |
+| operated_passages | INT | Passages actually served. |
+| skipped_passages | INT | Passages of operated runs that did not serve the stop. |
+| cancelled_passages | INT | Passages of cancelled runs. |
+| avg_delay_s | DECIMAL(8,1) | Average delay of the operated passages, in seconds. |
+| median_delay_s | DECIMAL(8,1) | Median delay of the operated passages, in seconds. |
+| on_time_pct | DECIMAL(5,1) | Share of operated passages on time. |
+| late_pct | DECIMAL(5,1) | Share of operated passages late. |
+| counted_passages | INT | Operated passages where boardings were counted (equipped vehicles). |
+| boardings_equipped | INT | Passengers counted getting on (equipped vehicles only); NULL when nothing was counted. |
+| alightings_equipped | INT | Passengers counted getting off (equipped vehicles only); NULL when nothing was counted. |
+| boardings_per_counted_passage | DECIMAL(6,1) | Boardings / counted passages. |
+| busiest_service_hour | INT | Service hour (0 to 24, 24 = after midnight) with the most planned passages; the earliest on a tie. |
+| busiest_hour_passages | INT | Planned passages during that hour. |
+| demand_segment | VARCHAR(10) | Counted boardings over the period: 'High' (≥ 100), 'Medium' (20–99), 'Low' (< 20), 'No count' (served, but no equipped vehicle counted), 'Not served' (no operated passage), 'n/a' (unknown stop). |
+
+## 9. analytics.report_vehicles
+
+- **Purpose:** One row per vehicle with its fleet attributes, age, use, punctuality and passengers carried. All 2,037
+  rows of `dim_vehicles` appear (2,036 vehicles + the `n/a` vehicle). Vehicles are simulated.
+- **Source:** `analytics/reports/14_report_vehicles.sql`
+- **Columns:**
+
+| Column Name | Data Type | Description |
+|---|---|---|
+| vehicle_key | INT | Surrogate key of the vehicle in `dim_vehicles`; 0 = 'n/a' (cancelled runs and vehicles missing from the fleet). |
+| vehicle_id | VARCHAR(50) | Fleet number of the vehicle. |
+| vehicle_type | VARCHAR(50) | Type of vehicle (e.g., 'Bus', 'Tram'). |
+| capacity | INT | Number of passengers the vehicle can carry. |
+| depot | VARCHAR(50) | Depot the vehicle is attached to. |
+| in_service_date | DATE | Date the vehicle first entered service; NULL when unknown. |
+| age_years | INT | Age in whole years at the last service day; NULL when the date is unknown. |
+| has_passenger_counter | INT | 1 when at least one passage of the vehicle was counted (boardings or alightings). |
+| planned_runs | INT | Runs assigned to the vehicle (a run has a single vehicle). |
+| operated_runs | INT | Runs with at least one operated passage. |
+| cancelled_runs | INT | Cancelled runs. Cancelled runs have no vehicle, so they are all on the 'n/a' vehicle. |
+| lines_served | INT | Number of distinct lines the vehicle ran on. |
+| service_days | INT | Number of service days with a passage. |
+| avg_daily_span_h | DECIMAL(4,1) | Hours from the first actual departure to the last actual arrival of a service day, averaged over its service days. |
+| planned_passages | INT | Passages assigned to the vehicle. |
+| operated_passages | INT | Passages actually served. |
+| avg_delay_s | DECIMAL(8,1) | Average delay of the operated passages, in seconds. |
+| on_time_pct | DECIMAL(5,1) | Share of operated passages on time. |
+| late_pct | DECIMAL(5,1) | Share of operated passages late. |
+| counted_passages | INT | Passages where boardings or alightings were counted. |
+| boardings_equipped | INT | Passengers counted getting on; NULL for a vehicle without a counter. |
+| alightings_equipped | INT | Passengers counted getting off; NULL for a vehicle without a counter. |
