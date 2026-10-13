@@ -204,6 +204,14 @@ Business definitions used in every view:
 Each view keeps the `n/a` member of its dimension (stop 0, vehicle 0), so its totals equal the fact table. To count
 only real stops or vehicles, filter it out with `stop_key <> 0` or `vehicle_key <> 0`.
 
+**Access:**
+- **The `analyst` role** has `SELECT` on the `analytics` schema only, which covers every current and future report
+  view. It has no rights on bronze, silver or gold (`analytics/reports/15_analyst_access.sql`).
+- **How the views still work:** the views and the gold tables have the same owner, so SQL Server checks the
+  permission on the view only (ownership chaining).
+- **Checks:** `tests/quality_checks_analytics.sql` checks the access, the completeness and the totals of every view
+  against `gold.fact_trips`.
+
 ---
 
 ## 7. analytics.report_lines

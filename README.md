@@ -82,8 +82,9 @@ than days or weeks.
    | 5 | `EXEC silver.load_silver;` | cleans bronze into silver |
    | 6 | `scripts/gold/ddl_gold.sql`, `scripts/gold/proc_load_gold.sql` | creates the gold tables (with their indexes) and their load procedure |
    | 7 | `EXEC gold.load_gold;` | loads the dimensions and facts from silver |
-   | 8 | `tests/quality_checks_silver.sql`, `tests/quality_checks_gold.sql` | quality checks: each one says what result to expect |
-   | 9 | `analytics/reports/12_report_lines.sql`, `13_report_stops.sql`, `14_report_vehicles.sql` | creates the report views in the `analytics` schema |
+   | 8 | `analytics/reports/12_report_lines.sql`, `13_report_stops.sql`, `14_report_vehicles.sql` | creates the report views in the `analytics` schema |
+   | 9 | `analytics/reports/15_analyst_access.sql` | creates the `analyst` role, with read access to the `analytics` schema only |
+   | 10 | `tests/quality_checks_silver.sql`, `tests/quality_checks_gold.sql`, `tests/quality_checks_analytics.sql` | quality checks: each one says what result to expect |
 
    The exploration and analysis scripts (`analytics/eda/`, `analytics/advanced/`) only read data and can be run in
    any order once gold is loaded.
@@ -125,7 +126,7 @@ SQL functions it uses:
 |---|---|---|
 | Exploratory data analysis | `analytics/eda/` | database, dimensions, date ranges, measures (key metrics), magnitude, ranking |
 | Advanced analytics | `analytics/advanced/` | change over time (by hour), cumulative totals and moving averages, performance vs own average and peak vs off-peak, segmentation, part-to-whole (Pareto) |
-| Reports | `analytics/reports/` | `analytics.report_lines`, `analytics.report_stops`, `analytics.report_vehicles` |
+| Reports | `analytics/reports/` | `analytics.report_lines`, `analytics.report_stops`, `analytics.report_vehicles`, and the `analyst` role that can read them |
 
 The findings, with charts, the business definitions they use and their limits, are in
 [docs/analytics-insights.md](docs/analytics-insights.md). Delays, cancellations, vehicles and passenger counts are
@@ -138,7 +139,7 @@ tcl-data-warehouse/
 ├── analytics/
 │   ├── eda/                    # Exploratory data analysis (scripts 01 to 06)
 │   ├── advanced/               # Advanced analytics (scripts 07 to 11)
-│   └── reports/                # Report views of the analytics schema (scripts 12 to 14)
+│   └── reports/                # Report views of the analytics schema (12 to 14) and analyst access (15)
 ├── data/                       # Source CSV files (not versioned) and their documentation
 │   ├── source_network/         # Network reference system: stop, line, line_stop
 │   ├── source_ops/             # Operations & fleet system: mode_category, vehicle, trip
@@ -155,7 +156,7 @@ tcl-data-warehouse/
 │   ├── bronze/                 # Bronze tables and their load procedure
 │   ├── silver/                 # Silver tables and their cleaning procedure
 │   └── gold/                   # Gold tables (fact constellation, indexes) and their load procedure
-├── tests/                      # Quality checks of the silver and gold layers
+├── tests/                      # Quality checks of the silver, gold and analytics layers
 ├── docker-compose.yml          # SQL Server 2022 container
 ├── env.example                 # Template for the local .env file
 └── README.md
