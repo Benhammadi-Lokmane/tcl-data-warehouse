@@ -413,3 +413,54 @@ xychart-beta
   - **Very late passages:** 4.8 % are more than 10 minutes late, which is 22,147 passages in a single day.
   - **What to report:** "69 % on time" describes the typical trip, but the very late passages are the ones
     passengers remember, so report both.
+
+## 11. Part-to-whole analysis
+
+Source: `analytics/advanced/11_part_to_whole_analysis.sql`
+
+The warehouse has no cancellation reason, so cancellations are split by mode, category and time band instead.
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#2a78d6"
+---
+xychart-beta
+    title "Share of all late passages made by the most late lines (%)"
+    x-axis "Lines, from most to fewest late passages" ["Top 10", "Top 20", "Top 36", "Top 50", "Top 83", "Top 150", "All 615"]
+    y-axis "Running share of late passages (%)" 0 --> 100
+    bar [19.9, 33.7, 50.3, 61.8, 80.1, 95.0, 100.0]
+```
+
+**Share of the service vs share of the problems:**
+
+| Group | Passages | Late passages | Runs | Cancelled runs |
+|---|---:|---:|---:|---:|
+| Bus | 78.0 % | 89.0 % | 71.5 % | 85.3 % |
+| Tram | 9.4 % | 6.5 % | 9.3 % | 6.5 % |
+| Metro | 7.1 % | 0.0 % | 11.9 % | 2.2 % |
+| Trolleybus | 5.2 % | 4.5 % | 4.3 % | 4.3 % |
+| Peak hours | 38.1 % | 45.3 % | 40.2 % | 55.4 % |
+| Off-peak | 61.9 % | 54.7 % | 59.8 % | 44.6 % |
+
+- **Buses carry more of the problems than their share of the service:**
+  - **Lateness:** 78 % of passages, but 89 % of late passages.
+  - **Cancellations:** 72 % of runs, but 85 % of cancelled runs.
+  - **The metro:** 7 % of passages and no late passage at all.
+  - **Reading:** the gap is probably structural (shared roads vs a dedicated track), so "buses are the problem" really
+    means "road traffic is the problem". The data is simulated.
+- **Lateness is concentrated:**
+  - **The Pareto:** 36 of the 615 lines with late passages (6 %) make half of all late passages, and 83 make 80 %.
+    C5 alone makes 4 %.
+  - **Who is at the top:** busy bus lines (C5, C25, C12) and trams (T2, T4). A Pareto counts late passages, so a big
+    line ranks high even if its late % is moderate.
+  - **Consequence:** an action plan on 36 lines would cover half of the lateness.
+- **Peaks take more than their share of the problems:** peak hours have 38 % of passages but 45 % of late passages, and
+  40 % of runs but 55 % of cancellations.
+- **The missing city matters less than it seemed:**
+  - **The `n/a` city:** its stops are 46 % of all stops but carry only 8 % of passages and 4.7 % of counted
+    boardings. Most of them are low-traffic stops.
+  - **Central districts:** they take much more of the boardings than of the passages. Lyon 3e has 10.9 % of counted
+    boardings for 6.2 % of passages.
