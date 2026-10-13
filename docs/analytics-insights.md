@@ -291,3 +291,73 @@ counted boardings (demand, equipped vehicles). When the line is above the bars, 
 - **Smoothing delays the peak:** the weighted 3-hour average peaks at 19:00 (197.0 s for 17:00–19:59), one hour after
   the raw peak at 18:00 (227.5 s). A trailing window flattens a peak and moves it later. The hour axis is complete
   (hours 2 and 3 filled with no service), otherwise the window at 04:00 would include the night hours 0 and 1.
+
+## 9. Performance analysis
+
+Source: `analytics/advanced/09_performance_analysis.sql`
+
+With one service day, each line is compared with **its own average for the day** and with **the previous time band**,
+instead of the previous week. Scope: the 163 Regular lines with at least 20 runs.
+
+**Lines per time band:**
+
+| Time band | Lines | Above their own average | Degrading vs previous band | Improving vs previous band |
+|---|---:|---:|---:|---:|
+| Early (00:00–06:59) | 155 | 37 | – | – |
+| Morning peak (07:00–08:59) | 162 | 111 | 119 | 29 |
+| Midday (09:00–15:59) | 160 | 53 | 43 | 110 |
+| Evening peak (16:00–18:59) | 162 | 123 | 121 | 34 |
+| Evening (19:00–00:59) | 158 | 39 | 36 | 115 |
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#2a78d6"
+---
+xychart-beta horizontal
+    title "Peak penalty: late % at peak minus late % off-peak (top 10 lines)"
+    x-axis "Line" ["245", "144", "146", "108", "93", "77", "155", "TB12", "78", "33"]
+    y-axis "Peak penalty (percentage points)" 0 --> 40
+    bar [36.7, 31.3, 29.8, 26.5, 26.3, 25.7, 25.2, 24.1, 23.7, 23.6]
+```
+
+<details>
+<summary>Peak and off-peak late % of the top 10 lines</summary>
+
+| Line | Mode | Passages at peak | Passages off-peak | Late at peak (%) | Late off-peak (%) | Peak penalty (points) |
+|---|---|---:|---:|---:|---:|---:|
+| 245 | Bus | 412 | 446 | 57.5 | 20.9 | 36.7 |
+| 144 | Bus | 301 | 233 | 38.2 | 6.9 | 31.3 |
+| 146 | Bus | 243 | 197 | 35.4 | 5.6 | 29.8 |
+| 108 | Bus | 533 | 1,333 | 53.3 | 26.8 | 26.5 |
+| 93 | Bus | 879 | 1,580 | 64.3 | 38.0 | 26.3 |
+| 77 | Bus | 939 | 1,469 | 66.9 | 41.2 | 25.7 |
+| 155 | Bus | 346 | 577 | 53.5 | 28.2 | 25.2 |
+| TB12 | Bus | 721 | 1,972 | 43.3 | 19.2 | 24.1 |
+| 78 | Bus | 1,301 | 1,932 | 49.2 | 25.5 | 23.7 |
+| 33 | Bus | 2,182 | 3,980 | 57.6 | 33.9 | 23.6 |
+
+Lines with at least 100 passages at peak and off-peak (157 lines).
+
+</details>
+
+- **The peaks hurt almost every line, so this is a network pattern, not a line problem:**
+  - **At each peak:** about 7 lines in 10 are above their own average and getting worse.
+  - **After each peak:** most recover in the next band (110 improve at midday, 115 in the evening).
+  - **Peak vs off-peak:** 129 of 163 lines are later at peak, and only 26 are better.
+  - **Reading:** when nearly every line degrades at the same time, the cause is shared (traffic, crowding). So
+    network-wide measures at the peak, such as bus lanes and peak timetables, come before line-by-line plans. Delays
+    are simulated.
+- **Some lines only have a problem at the peak:**
+  - **Peak-only lines:** 144 and 146 are almost punctual off-peak (6.9 % and 5.6 % late) but more than 35 % late at
+    the peak. A fix limited to the peak (timetable padding, bus priority) addresses their whole problem.
+  - **Lines late all day:** 93 and 77 are already 38–41 % late off-peak and get worse at the peak. They need more
+    than a peak fix.
+- **Most bus lines are "better than average" because the average is weighted:** 96 of 143 bus lines are below the
+  bus average (33.9 % late), and only 47 above.
+  - **The lines above average are the big ones:** 3,204 passages per line against 1,962, so they make 44 % of bus
+    passages.
+  - **Effect on the average:** they pull the weighted average up to 33.9 %, while the simple average of the line
+    rates is 31.4 %.
