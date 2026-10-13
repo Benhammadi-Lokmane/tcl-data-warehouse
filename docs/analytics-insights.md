@@ -1,7 +1,7 @@
 # Analytics Insights
 
-What the analytics scripts in `analytics/` found, task by task. Each insight names the script it comes from and its
-limits.
+What the analytics scripts in `analytics/` found: first the top findings, answering five business questions, then the
+details task by task. Each insight names the script it comes from and its limits.
 
 > **Read this first.** Lines, stops, cities, stop order and the planned timetable come from TCL open data. **Delays,
 > cancellations, skipped stops, vehicles and passenger counts are simulated.** The insights describe the analysis
@@ -24,6 +24,85 @@ Used the same way in every script:
 | Line segments | Good: at most 10 % of passages late · Watch: more than 10 % and at most 20 % · In difficulty: more than 20 %. |
 | Priority line | A line in difficulty with at least the median volume of operated passages. |
 | Stop demand | Daily counted boardings: High ≥ 100 · Medium 20–99 · Low < 20 · No count when no equipped vehicle counted at the stop. |
+
+---
+
+## Top findings
+
+Five business questions, answered from one service day (Tuesday 2026-09-08). Script numbers refer to `analytics/eda/`
+(01–06), `analytics/advanced/` (07–11) and the report views of `analytics/reports/`.
+
+### 1. How punctual is the network?
+
+- **Most passages are on time, but the tail is long:**
+  - **Overall:** 69.4 % of passages are on time, 29.5 % late and 1.1 % early.
+  - **The tail:** the median delay is 74 s, but the 95th percentile is 586 s, and 22,147 passages (4.8 %) are more
+    than 10 minutes late.
+- **Punctuality depends on the mode:** the median delay is 97 s for buses, 55 s for trams and 7 s for the metro. The
+  metro, funicular and river shuttle are never late.
+- **It is worst just after the peaks:** the late share peaks at 08:00 (37.4 %) and 18:00 (40.1 %), one hour after the
+  traffic peaks.
+- **Sources:** 04 measures, 05 magnitude, 07 change over time, 10 segmentation.
+- **Limit:** the 20 % "in difficulty" threshold flags 87 % of the rated lines, which is too low to separate lines in
+  this simulated data.
+
+### 2. How reliable is the service?
+
+- **Cancellations are rare, skipped stops more common:** 184 of the 22,427 runs were cancelled (0.82 %), always in
+  full, while 1,952 runs (8.7 %) skipped at least one stop.
+- **Cancellations fall on buses and on the peaks:**
+  - **Buses:** 85 % of cancellations for 72 % of runs.
+  - **Peaks:** 55 % of cancellations for 40 % of runs, so 1.19 % of runs at the morning peak against 0.61 % off-peak.
+- **Lines that did not run:** 774 of the 801 lines ran. The other 27 are night, event, replacement and school lines,
+  which is plausible for a Tuesday.
+- **Sources:** 04 measures, 05 magnitude, 07 change over time, 11 part-to-whole.
+- **Limit:** the warehouse has no cancellation reason. With one day, the rates of small lines rest on one or two
+  runs, so every ranking needs at least 20 runs.
+
+### 3. Where and when do passengers travel? (equipped vehicles only)
+
+- **Where:** 578,899 boardings were counted, and Zone 1 takes 93 % of them. Lyon 3e, Lyon 9e and Villeurbanne lead
+  the cities.
+- **Demand is concentrated:**
+  - **Stops:** 874 stops (9 % of the stops served) take 79 % of the counted boardings.
+  - **Stations:** the busiest are Gorge de Loup, Saxe - Gambetta and Gare de Vaise.
+- **Demand peaks more sharply than the service:** a counted passage has 7.8 boardings at 08:00 against 0.2 at
+  01:00. By the end of 09:00, the day has carried 32 % of its boardings but made only 29 % of its passages.
+- **The metro carries the most per passage:** 28.5 boardings per counted passage, against 2.2 for buses.
+- **Sources:** 05 magnitude, 06 ranking, 07 change over time, 08 cumulative, 10 segmentation, `analytics.report_stops`.
+- **Limits:**
+  - **Coverage:** counts only exist for about a quarter of the fleet, and the funicular has none.
+  - **Missing city:** 46 % of stops have no city, but they carry only 4.7 % of the counted boardings.
+
+### 4. How is the fleet used?
+
+- **Use:** 1,985 of the 2,036 vehicles ran (97.5 %), and 495 of them have a passenger counter.
+- **Age and working day:** the fleet is 9.0 years old on average (0 to 48 years). Buses are the youngest (8 years)
+  and work the shortest days: 12.8 h against 18.4 h for trams and metros.
+- **Vehicle age does not explain lateness:** buses under 5 years old are 34.0 % late, and buses of 15 years or more
+  are 35.1 % late.
+- **Sources:** 03 date range, 04 measures, `analytics.report_vehicles` (lateness grouped by age band).
+- **Limits:**
+  - **Simulated data:** the vehicles are simulated.
+  - **No vehicle on cancelled runs:** cancellations cannot be linked to the fleet.
+  - **No occupancy:** counts are boardings, not on-board load, so load vs capacity cannot be measured.
+
+### 5. Where should SYTRAL act first?
+
+- **Network-wide peak measures first:** at both peaks, about 3 lines in 4 get worse, and 129 of the 163 rated lines
+  are later at the peak than off-peak. That is a shared cause, such as traffic and crowding, not a line-by-line
+  problem.
+- **Then a short list of lines:**
+  - **Priority lines:** 76 lines are both in difficulty and high-volume, and they carry 71 % of the rated lines'
+    passages.
+  - **Concentration:** 36 lines make half of all late passages (C5 alone makes 4 %).
+- **The right fix for each line:**
+  - **Peak-only lines:** 144 and 146 are almost punctual off-peak but more than 35 % late at the peak, so a fix at
+    the peak only is enough for them.
+  - **Lines late all day:** 93 and 77 need more than a peak fix.
+- **Stops:** the 874 high-demand stops come first for shelters, accessibility work and real-time information.
+- **Sources:** 09 performance, 10 segmentation, 11 part-to-whole, `analytics.report_lines`, `analytics.report_stops`.
+- **Limit:** one simulated service day. Confirm these patterns over a full month before acting on them.
 
 ---
 
