@@ -21,6 +21,9 @@ Used the same way in every script:
 | Cancellation rate | Cancelled runs / planned runs (runs, not stop rows). |
 | Passenger measures | Computed on vehicles with a passenger counter only, and labelled as such. |
 | Peak hours | 07:00–08:59 and 16:00–18:59 of the service day; every other hour is off-peak. |
+| Line segments | Good: at most 10 % of passages late · Watch: more than 10 % and at most 20 % · In difficulty: more than 20 %. |
+| Priority line | A line in difficulty with at least the median volume of operated passages. |
+| Stop demand | Daily counted boardings: High ≥ 100 · Medium 20–99 · Low < 20 · No count when no equipped vehicle counted at the stop. |
 
 ---
 
@@ -361,3 +364,52 @@ Lines with at least 100 passages at peak and off-peak (157 lines).
     passages.
   - **Effect on the average:** they pull the weighted average up to 33.9 %, while the simple average of the line
     rates is 31.4 %.
+
+## 10. Data segmentation
+
+Source: `analytics/advanced/10_data_segmentation.sql`
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#2a78d6"
+---
+xychart-beta
+    title "Operated passages by delay band (%)"
+    x-axis "Delay band" ["Early", "On time", "Late 3-5 min", "Late 5-10 min", "Late > 10 min"]
+    y-axis "Share of operated passages (%)" 0 --> 80
+    bar [1.1, 69.4, 13.6, 11.1, 4.8]
+```
+
+| Line segment (163 Regular lines) | Lines | Share of their passages |
+|---|---:|---:|
+| Priority (in difficulty, at least the median volume) | 76 | 70.6 % |
+| In difficulty, smaller lines | 66 | 16.7 % |
+| Watch | 12 | 4.7 % |
+| Good | 9 | 8.1 % |
+
+| Stop demand segment | Stops | Share of counted boardings |
+|---|---:|---:|
+| High (≥ 100 boardings) | 874 | 78.6 % |
+| Medium (20–99) | 2,221 | 17.5 % |
+| Low (< 20) | 3,471 | 3.9 % |
+| No count | 2,906 | – |
+
+- **The 20 % threshold flags almost every line:**
+  - **Coverage:** 142 of the 163 Regular lines (87 %) are "in difficulty", including all but 9 bus and trolleybus
+    lines and every line in the three most late quartiles. A segment that holds 87 % of the lines does not help
+    decide anything.
+  - **Adding volume:** keeping the business definition but crossing it with volume gives 76 Priority lines. That is a
+    shorter list, and these lines carry 71 % of the passages, so an action there reaches the most passengers.
+  - **Caveat:** delays are simulated; with real data, the threshold may separate the lines better.
+- **Demand is concentrated on few stops:**
+  - **High-demand stops:** 874 stops (9 % of the 9,472 stops served) take 79 % of counted boardings. Shelters,
+    accessibility work and real-time information should go there first.
+  - **No count:** 2,906 stops had no equipped vehicle stopping there. Their demand is unknown, not low.
+- **Most late passages are a few minutes late:**
+  - **The split:** 69.4 % of passages are on time and 24.7 % are 3–10 minutes late.
+  - **Very late passages:** 4.8 % are more than 10 minutes late, which is 22,147 passages in a single day.
+  - **What to report:** "69 % on time" describes the typical trip, but the very late passages are the ones
+    passengers remember, so report both.
